@@ -1,6 +1,6 @@
 # Webshop Demo
 
-A simple Spring Boot e-commerce demo application.
+This is a sample project for the following debugging tutorial: https://flounder.dev/posts/your-programs-are-not-single-threaded/
 
 ## Running the Application
 
