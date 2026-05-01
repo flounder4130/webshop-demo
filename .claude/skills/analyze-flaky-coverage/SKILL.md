@@ -27,7 +27,7 @@ coverage differ between runs are the source of non-determinism.
 ### 1. Ensure prerequisites
 
 - The target Maven project must be compiled (`mvn compile test-compile`).
-- The IntelliJ Coverage project must be built (`./gradlew jar` from its root).
+- The [IntelliJ Coverage project](https://github.com/jetbrains/intellij-coverage) must be built (`./gradlew jar` from its root).
   The default location is `$COVERAGE_HOME` or `~/IdeaProjects/intellij-coverage`.
 
 ### 2. Configure the script
