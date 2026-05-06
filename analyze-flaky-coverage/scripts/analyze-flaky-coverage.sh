@@ -1,24 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COVERAGE_HOME="${COVERAGE_HOME:-$HOME/IdeaProjects/intellij-coverage}"
-PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-AGENT_JAR="$COVERAGE_HOME/instrumentation/build/libs/compressed-intellij-coverage-agent-1.0.SNAPSHOT.jar"
-REPORT_CP="$COVERAGE_HOME/reporter/build/libs/reporter-1.0.SNAPSHOT.jar:$COVERAGE_HOME/reporter/offline/build/libs/offline-1.0.SNAPSHOT.jar:$COVERAGE_HOME/instrumentation/build/libs/full-intellij-coverage-agent-1.0.SNAPSHOT.jar:$COVERAGE_HOME/offline-runtime/build/libs/offline-runtime-1.0.SNAPSHOT.jar:$COVERAGE_HOME/offline-runtime/data/build/libs/data-1.0.SNAPSHOT.jar:$COVERAGE_HOME/offline-runtime/api/build/libs/api-1.0.SNAPSHOT.jar"
-REPORT_CP="$REPORT_CP:$(ls "$HOME"/.gradle/caches/modules-2/files-2.1/org.jetbrains.intellij.deps/coverage-report/1.0.27/*/coverage-report-1.0.27.jar)"
-
+# ---------------------------------------------------------------------------
+# Per-project configuration
+# ---------------------------------------------------------------------------
 TEST_CLASS=com.example.webshop.service.InvoiceServiceTest
 INCLUDE_PATTERN="com.example.webshop.*"
 TOTAL_RUNS="${1:-50}"
 
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="$(cd "$SKILL_DIR/.." && pwd)"
+TOOLS_DIR="$SKILL_DIR/tools"
+TOOLS_BUILD_DIR="$SKILL_DIR/build"
 WORK_DIR="$PROJECT_DIR/target/coverage-runs"
+SUMMARY="$PROJECT_DIR/target/coverage-summary.txt"
+
+# ---------------------------------------------------------------------------
+# Resolve IntelliJ coverage agent + reporter from Maven Central (cached in ~/.m2)
+# ---------------------------------------------------------------------------
+COVERAGE_VERSION="${COVERAGE_VERSION:-1.0.766}"
+AGENT_GAV="org.jetbrains.intellij.deps:intellij-coverage-agent:${COVERAGE_VERSION}"
+REPORTER_GAV="org.jetbrains.intellij.deps:intellij-coverage-reporter:${COVERAGE_VERSION}"
+
+MVN="${PROJECT_DIR}/mvnw"
+[ -x "$MVN" ] || MVN="mvn"
+
+resolve_jar() {
+  local gav="$1"
+  "$MVN" -q dependency:get -Dartifact="$gav" -Dtransitive=false >/dev/null
+  local g="${gav%%:*}"; local rest="${gav#*:}"
+  local a="${rest%%:*}"; local v="${rest##*:}"
+  echo "$HOME/.m2/repository/${g//.//}/$a/$v/$a-$v.jar"
+}
+
+echo "Resolving coverage agent ${COVERAGE_VERSION} from Maven Central..."
+AGENT_JAR="$(resolve_jar "$AGENT_GAV")"
+REPORTER_JAR="$(resolve_jar "$REPORTER_GAV")"
+
+# ---------------------------------------------------------------------------
+# Compile bundled TextCoverageStatistics.java against the resolved jars
+# ---------------------------------------------------------------------------
+TOOLS_CP="$TOOLS_BUILD_DIR:$AGENT_JAR:$REPORTER_JAR"
+if [ ! -f "$TOOLS_BUILD_DIR/com/intellij/rt/coverage/report/TextCoverageStatistics.class" ] \
+   || [ "$TOOLS_DIR/TextCoverageStatistics.java" -nt "$TOOLS_BUILD_DIR/com/intellij/rt/coverage/report/TextCoverageStatistics.class" ]; then
+  echo "Compiling TextCoverageStatistics..."
+  mkdir -p "$TOOLS_BUILD_DIR"
+  javac -d "$TOOLS_BUILD_DIR" -cp "$AGENT_JAR:$REPORTER_JAR" "$TOOLS_DIR/TextCoverageStatistics.java"
+fi
+
+# ---------------------------------------------------------------------------
+# Run the test under coverage N times
+# ---------------------------------------------------------------------------
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 
-SUMMARY="$PROJECT_DIR/target/coverage-summary.txt"
-
 generate_report() {
-  java -cp "$REPORT_CP" \
+  java -cp "$TOOLS_CP" \
     com.intellij.rt.coverage.report.TextCoverageStatistics \
     "$1" "$PROJECT_DIR/target/classes"
 }
@@ -31,7 +72,7 @@ for i in $(seq 1 "$TOTAL_RUNS"); do
 
   set +e
   cd "$PROJECT_DIR"
-  mvn -q surefire:test \
+  "$MVN" -q surefire:test \
     -Dtest="$TEST_CLASS" \
     "-DargLine=-Didea.coverage.calculate.hits=true -javaagent:${AGENT_JAR}=${IC_FILE},true,false,false,false,${INCLUDE_PATTERN}" \
     > /dev/null 2>&1

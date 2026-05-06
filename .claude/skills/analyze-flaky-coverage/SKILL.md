@@ -8,8 +8,8 @@ description: >-
   thread-safety bugs, non-deterministic ordering).
 license: Apache-2.0
 compatibility: >-
-  Requires Java 17+, Maven, and a built IntelliJ Coverage checkout
-  ($COVERAGE_HOME or ~/IdeaProjects/intellij-coverage).
+  Requires Java 17+ and Maven. The IntelliJ Coverage agent + reporter are
+  fetched from Maven Central on first run; no source checkout needed.
 metadata:
   author: jetbrains
   version: "1.0"
@@ -27,8 +27,20 @@ coverage differ between runs are the source of non-determinism.
 ### 1. Ensure prerequisites
 
 - The target Maven project must be compiled (`mvn compile test-compile`).
-- The [IntelliJ Coverage project](https://github.com/jetbrains/intellij-coverage) must be built (`./gradlew jar` from its root).
-  The default location is `$COVERAGE_HOME` or `~/IdeaProjects/intellij-coverage`.
+- Maven and a JDK (17+) must be on `PATH`.
+- The IntelliJ Coverage **agent** and **reporter** jars are pulled from Maven
+  Central automatically by the script on first run via `mvn dependency:get`
+  (cached afterward in `~/.m2`). You do **not** need to clone or build the
+  intellij-coverage repo.
+- The bundled `tools/TextCoverageStatistics.java` is compiled once against
+  those jars (output cached in `analyze-flaky-coverage/build/`).
+- Override the version with `COVERAGE_VERSION=1.0.xxx` if needed (default
+  matches the latest published release at the time the skill was written).
+
+> Last-resort fallback: if Maven Central is unreachable, you can clone
+> https://github.com/JetBrains/intellij-coverage and build it with
+> `JAVA_HOME=<JDK 11> ./gradlew jar`, then point the script at the resulting
+> jars by editing `AGENT_JAR` / `REPORTER_JAR` directly.
 
 ### 2. Configure the script
 
@@ -85,10 +97,15 @@ diagnosis and fix options.
 
 ### 5. Adapt to another project
 
-1. Copy the `analyze-flaky-coverage/` directory into the target Maven project.
-2. Edit `TEST_CLASS` and `INCLUDE_PATTERN` in the script.
+1. Copy the `analyze-flaky-coverage/` directory (including `tools/` and
+   `scripts/`) into the target Maven project.
+2. Edit `TEST_CLASS` and `INCLUDE_PATTERN` at the top of
+   `scripts/analyze-flaky-coverage.sh`.
 3. Pre-compile: `mvn compile test-compile`.
 4. Run: `./analyze-flaky-coverage/scripts/analyze-flaky-coverage.sh 50`
+
+The first invocation downloads the coverage agent + reporter from Maven Central
+and compiles `TextCoverageStatistics`. Subsequent runs reuse both caches.
 
 ## Edge cases
 
